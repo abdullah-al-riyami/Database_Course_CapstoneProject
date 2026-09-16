@@ -1,0 +1,30 @@
+drop table if exists stg.sales_raw;
+
+create table stg.sales_raw (
+    row_id          text,
+    order_id        text,
+    order_date      text,
+    ship_date       text,
+    ship_mode       text,
+    customer_id     text,
+    customer_name   text,
+    segment         text,
+    city            text,
+    state           text,
+    country         text,
+    postal_code     text,
+    market          text,
+    region          text,
+    product_id      text,
+    category        text,
+    sub_category    text,
+    product_name    text,
+    sales           text,
+    quantity        text,
+    discount        text,
+    profit          text,
+    shipping_cost   text,
+    order_priority  text,
+    load_ts         timestamptz not null default now(),
+    source_file     text        not null default 'Global_Superstore2.csv'
+);
