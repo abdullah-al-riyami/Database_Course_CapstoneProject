@@ -128,12 +128,10 @@ docker compose exec -T db psql -U postgres -d superstore_dwh -v ON_ERROR_STOP=1 
 
 ## 9. Read the verification output
 
-The fourth command prints **13 rows**; every one must show `PASS` in the result column.
+The fourth command prints **2 rows**; both must show `PASS` in the result column:
 
-Two rows deserve special attention:
-
-- **`distinct_order_priority = 4`** proves the CSV parsed correctly. `order_priority` is the last column of the file, so a comma inside a quoted product name that was mis-parsed would shift fields and inflate this count far past 4.
-- **`product_name_smart_quotes = 43` together with `c1_control_chars = 0`** proves the WIN1252 encoding was applied. If you see 0 smart quotes and 43 control chars instead, the file silently loaded as LATIN1 — the load "succeeds" but the data is corrupted.
+- **`row_count = 51290`** — exactly 51,290 data rows landed; 51,291 would mean the header row loaded as data.
+- **`column_count = 26`** — the table has the 24 source columns plus the 2 audit columns.
 
 ## 10. Spot-check the data by hand
 
@@ -154,11 +152,135 @@ Correct output (United States on top by a wide margin):
 (5 rows)
 ```
 
-## 11. Connect from a GUI client
+## 11. Build and verify the cleansed layer
+
+Run the cleansed files in order, reading each result before continuing:
+
+```bash
+docker compose exec -T db psql -U postgres -d superstore_dwh -v ON_ERROR_STOP=1 -f /sql/20_cleansed/01_drop_views.sql
+```
+Expected: `DROP VIEW` three times (or a NOTICE "does not exist, skipping" on a fresh database)
+
+```bash
+docker compose exec -T db psql -U postgres -d superstore_dwh -v ON_ERROR_STOP=1 -f /sql/20_cleansed/02_create_sales_checked.sql
+docker compose exec -T db psql -U postgres -d superstore_dwh -v ON_ERROR_STOP=1 -f /sql/20_cleansed/03_create_sales.sql
+docker compose exec -T db psql -U postgres -d superstore_dwh -v ON_ERROR_STOP=1 -f /sql/20_cleansed/04_create_dq_rejects.sql
+```
+Expected: `CREATE VIEW` each time
+
+```bash
+docker compose exec -T db psql -U postgres -d superstore_dwh -v ON_ERROR_STOP=1 -f /sql/20_cleansed/05_verify_cleansed.sql
+```
+Expected scorecard:
+
+```
+staging_rows                  | 51290
+clean_rows                    | 51290
+rejected_rows                 | 0
+every_row_accounted_for       | t
+sales_values_unchanged        | t
+profit_values_unchanged       | t
+postal_codes_not_5_characters | 0
+product_names_with_odd_spaces | 0
+product_names_untrimmed       | 0
+expected_country_dim_rows     | 152
+expected_customer_dim_rows    | 1590
+expected_product_dim_rows     | 10768
+```
+
+followed by an empty reject list: `(0 rows)`. `every_row_accounted_for = t` means every staging row is either clean or rejected — none lost, none duplicated.
+
+## 12. Prove the reject rules work
+
+```bash
+docker compose exec -T db psql -U postgres -d superstore_dwh -v ON_ERROR_STOP=1 -f /sql/20_cleansed/06_test_rejects.sql
+```
+
+This inserts 5 deliberately bad rows inside a transaction and rolls back. Expected:
+
+```
+ source_row_id |                    reject_reason
+---------------+------------------------------------------------------
+ 900001        | order_date is missing or not a real DD-MM-YYYY date
+ 900002        | quantity is zero or negative
+ 900003        | sales is missing or not a number
+ 900004        | a required field is missing
+ 900005        | shipped before it was ordered
+(5 rows)
+
+ staging_rows_during_test | clean_rows_during_test | rejected_rows_during_test
+--------------------------+------------------------+---------------------------
+                    51295 |                  51290 |                         5
+(1 row)
+
+ROLLBACK
+```
+
+Then confirm the rollback left nothing behind:
+
+```bash
+docker compose exec -T db psql -U postgres -d superstore_dwh -c "select count(*) from stg.sales_raw;"
+```
+Expected: `51290`
+
+```bash
+docker compose exec -T db psql -U postgres -d superstore_dwh -c "select count(*) from cleansed.dq_rejects;"
+```
+Expected: `0`
+
+## 13. Check the target structure
+
+```bash
+docker compose exec -T db psql -U postgres -d superstore_dwh -v ON_ERROR_STOP=1 -f /sql/30_dwh/05_verify_structure.sql
+```
+
+Expected scorecard (the tables are created empty — Chapter 4 loads them):
+
+```
+tables_in_dwh     | 4
+primary_keys      | 4
+business_keys     | 4
+foreign_keys      | 3
+identity_columns  | 4
+country_dim_rows  | 0
+customer_dim_rows | 0
+product_dim_rows  | 0
+fact_rows         | 0
+```
+
+followed by the constraint list — exactly 11 rows: 4 PRIMARY KEY, 4 UNIQUE (the
+business keys) and 3 FOREIGN KEY on the fact.
+
+## 14. Prove the target rules work
+
+```bash
+docker compose exec -T db psql -U postgres -d superstore_dwh -f /sql/30_dwh/06_test_constraints.sql
+```
+
+This deliberately fires four errors inside a transaction and rolls everything
+back. Expected errors:
+
+- `duplicate key value violates unique constraint "country_dim_business_key"`
+- `cannot insert a non-DEFAULT value into column "country_key"`
+- `insert or update on table "sales_transactions_fact" violates foreign key constraint "sales_transactions_fact_country_fk"`
+- `null value in column "customer_name" of relation "customer_dim" violates not-null constraint`
+
+Note that the ERROR lines may appear slightly out of order relative to the
+`ROLLBACK` lines in the terminal, because errors and normal output are printed
+through different streams.
+
+Then confirm nothing was left behind:
+
+```bash
+docker compose exec -T db psql -U postgres -d superstore_dwh -c "select count(*) from dwh.country_dim;"
+```
+Expected: `0`
+
+## 15. Connect from a GUI client
 
 In DBeaver or pgAdmin, create a connection with: host `localhost`, port `5433`, database `superstore_dwh`, user `postgres`, password `postgres`. Browse to `stg.sales_raw` and confirm you see 51,290 rows.
 
-## 12. Test the reset
+## 16. Test the reset
 
 ```bash
 docker compose down -v
@@ -171,12 +293,12 @@ Correct output of the last command: `Did not find any relations.` — the databa
 Then re-run the runner:
 
 ```bash
-python sql/run_stg.py
+python sql/run_all.py
 ```
 
-and confirm all 13 checks pass again.
+and confirm the staging verification shows both checks PASS again.
 
-## 13. Shut down
+## 17. Shut down
 
 ```bash
 docker compose down
@@ -186,16 +308,19 @@ This stops the container but keeps the data volume, so your loaded rows survive 
 
 ---
 
-## Optional: prove the checks aren't lying
-
-The verification checks are only useful if they actually catch problems. Prove it to yourself:
+## Optional: prove the encoding check isn't lying
 
 1. Open `sql/10_stg/02_load_sales_raw.sql` and temporarily change `encoding 'WIN1252'` to `encoding 'LATIN1'`.
-2. Re-run steps 8 and 9 (the load must run again: repeat the `01_create_sales_raw.sql` file too, or just `truncate` first).
-3. Observe the result: `product_name_smart_quotes` becomes **0** and `c1_control_chars` becomes **43** — two FAIL rows, while the overall load still "succeeds".
-4. Change the file back to `'WIN1252'` and re-run to restore 43 / 0.
+2. Re-run the load file (`/sql/10_stg/01_create_sales_raw.sql` then `/sql/10_stg/02_load_sales_raw.sql`).
+3. Run:
 
-This demonstrates a load that completes without errors yet contains silently corrupted text — exactly the class of failure these checks exist to catch.
+```bash
+docker compose exec -T db psql -U postgres -d superstore_dwh -c "select count(*) from stg.sales_raw where product_name ~ ('[' || chr(128) || '-' || chr(159) || ']');"
+```
+
+Expected with LATIN1: **43** (invisible C1 control characters). Change the file back to `'WIN1252'`, re-run, and the same query returns **0**.
+
+Note that the load reports `COPY 51290` success **both times** — that silent corruption is exactly what the check exists to catch. (43 and 0 were measured against this dataset.)
 
 ## Troubleshooting
 
@@ -203,3 +328,4 @@ This demonstrates a load that completes without errors yet contains silently cor
 - **Port 5433 already in use** — set `HOST_PORT` in `.env` (e.g. `HOST_PORT=5434`) and run `docker compose up -d` again.
 - **"Cannot connect to the Docker daemon"** — Docker Desktop is not running. Start it and wait for it to be ready.
 - **Changed `POSTGRES_DB` but the new database does not appear** — `POSTGRES_DB` only takes effect on a fresh volume. Run `docker compose down -v` first, then `docker compose up -d --wait`.
+- **"cannot drop table stg.sales_raw because other objects depend on it"** — the cleansed views exist. Run `sql/20_cleansed/01_drop_views.sql` first, or just use `run_all.py`, which drops them for you before rebuilding staging.
