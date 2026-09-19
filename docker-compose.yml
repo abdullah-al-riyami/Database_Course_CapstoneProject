@@ -1,21 +1,17 @@
 services:
-  db:
-    image: postgres:17 # pinned to 17 to match the local install and coursework
+  postgres:
+    image: postgres:16
     container_name: superstore_db
-    environment: # Postgres environment variables
-      POSTGRES_USER:     ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB:       ${POSTGRES_DB:-superstore_dwh}
-    ports: # Postgres port mapping
-      - "${HOST_PORT:-5433}:5432"
-    volumes: # Postgres volume mapping
-      - ./dataset:/data:ro
-      - ./sql:/sql:ro
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: superstore
+    ports:
+      - "5433:5432"
+    volumes:
       - pgdata:/var/lib/postgresql/data
-    healthcheck: # Postgres healthcheck
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-superstore_dwh}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      - ./data:/data
+      - ./sql:/docker-entrypoint-initdb.d
+
 volumes:
   pgdata:
