@@ -10,6 +10,7 @@ CREATE TABLE silver.superstore_clean (
     ship_date       DATE NOT NULL,
     ship_mode       TEXT,
     customer_id     TEXT NOT NULL,
+    customer_id_original TEXT,
     customer_name   TEXT,
     segment         TEXT,
     city            TEXT,

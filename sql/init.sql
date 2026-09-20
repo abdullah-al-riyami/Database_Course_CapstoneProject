@@ -20,6 +20,14 @@ CALL silver.load_silver();
 \i /docker-entrypoint-initdb.d/gold/01_create_dimensions.sql
 \i /docker-entrypoint-initdb.d/gold/02_create_fact.sql
 \i /docker-entrypoint-initdb.d/gold/03_load_dim_customer.sql
+\i /docker-entrypoint-initdb.d/gold/04_load_dim_product.sql
+\i /docker-entrypoint-initdb.d/gold/05_load_dim_location.sql
+\i /docker-entrypoint-initdb.d/gold/06_load_dim_date.sql
+\i /docker-entrypoint-initdb.d/gold/07_load_fact_sales.sql
 
--- Run the gold loads
+-- Run the gold loads: dimensions first, fact last
 CALL gold.load_dim_customer();
+CALL gold.load_dim_product();
+CALL gold.load_dim_location();
+CALL gold.load_dim_date();
+CALL gold.load_fact_sales();

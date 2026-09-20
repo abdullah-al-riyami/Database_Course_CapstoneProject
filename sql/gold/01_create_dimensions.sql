@@ -21,7 +21,7 @@ CREATE TABLE gold.dim_product (
     UNIQUE (product_id, product_name)
 );
 
--- Location: one row per delivery place (Check 7)
+-- Location: one row per delivery place
 DROP TABLE IF EXISTS gold.dim_location CASCADE;
 CREATE TABLE gold.dim_location (
     location_key   INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

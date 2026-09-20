@@ -29,7 +29,7 @@ BEGIN
         )
         INSERT INTO silver.superstore_clean (
             row_id, order_id, order_date, ship_date, ship_mode,
-            customer_id, customer_name, segment,
+            customer_id, customer_id_original, customer_name, segment,
             city, state, country, postal_code, market, region,
             product_id, category, sub_category, product_name,
             sales, quantity, discount, profit, shipping_cost, order_priority
@@ -40,6 +40,7 @@ BEGIN
             TO_DATE(TRIM(order_date), 'DD-MM-YYYY'),   -- text to real date (Check 3)
             TO_DATE(TRIM(ship_date),  'DD-MM-YYYY'),
             TRIM(ship_mode),
+            trim(split_part(customer_id, '-', 1)||'-'||(split_part(customer_id, '-', 2)::INTEGER % 10000)::TEXT),  -- restore leading zeros (Check 5)
             TRIM(customer_id),
             TRIM(customer_name),
             TRIM(segment),
