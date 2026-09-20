@@ -37,7 +37,7 @@ BEGIN
         SELECT
             TRIM(row_id)::INTEGER,
             TRIM(order_id),
-            TO_DATE(TRIM(order_date), 'DD-MM-YYYY'),   -- text to real date (Check 3)
+            TO_DATE(TRIM(order_date), 'DD-MM-YYYY'),   -- text to real date 
             TO_DATE(TRIM(ship_date),  'DD-MM-YYYY'),
             TRIM(ship_mode),
             trim(split_part(customer_id, '-', 1)||'-'||(split_part(customer_id, '-', 2)::INTEGER % 10000)::TEXT),  -- restore leading zeros (Check 5)
@@ -47,10 +47,10 @@ BEGIN
             TRIM(city),
             TRIM(state),
             TRIM(country),
-            CASE                                        -- restore leading zero on US postal codes (Check 4)
+            CASE                                        -- restore leading zero on US postal codes 
                 WHEN TRIM(country) = 'United States' AND LENGTH(TRIM(postal_code)) = 4
-                    THEN LPAD(TRIM(postal_code), 5, '0')
-                ELSE NULLIF(TRIM(postal_code), '')      -- blanks become NULL (Check 2)
+                    THEN LPAD(TRIM(postal_code), 5, '0') -- Add '0's until a lenght of 5 is reached  
+                ELSE NULLIF(TRIM(postal_code), '')      -- blanks become NULL 
             END,
             TRIM(market),
             TRIM(region),

@@ -23,10 +23,10 @@ CREATE TABLE silver.superstore_clean (
     category        TEXT,
     sub_category    TEXT,
     product_name    TEXT NOT NULL,
-    sales           NUMERIC(12,4) NOT NULL,
+    sales           NUMERIC(14,5) NOT NULL,
     quantity        INTEGER NOT NULL,
     discount        NUMERIC(5,3) NOT NULL,
-    profit          NUMERIC(12,4) NOT NULL,
+    profit          NUMERIC(14,5) NOT NULL,
     shipping_cost   NUMERIC(10,2) NOT NULL,
     order_priority  TEXT,
     loaded_at       TIMESTAMP DEFAULT NOW()
